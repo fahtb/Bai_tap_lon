@@ -1,0 +1,211 @@
+name: cinema-bigdata
+services:
+  kafka:
+    image: confluentinc/cp-kafka:7.3.2@sha256:724faab73e5a5d18a83f1f015a52dde0dfac32851dec62c5f0006d6125d45b99
+    profiles: [core, full]
+    mem_limit: 1g
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: INTERNAL://:29092,CONTROLLER://:29093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes: [kafka-data:/var/lib/kafka/data, ./kafka/kraft.properties:/config/kraft.properties:ro]
+    # The 7.3 entrypoint expects ZooKeeper; invoke the bundled KRaft tools directly.
+    entrypoint: [/bin/bash, -ec]
+    command:
+      - |
+        kafka-storage format --ignore-formatted -t "$$CLUSTER_ID" -c /config/kraft.properties
+        exec kafka-server-start /config/kraft.properties
+    healthcheck:
+      test: [CMD-SHELL, 'kafka-topics --bootstrap-server localhost:29092 --list >/dev/null 2>&1']
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+  kafka-init:
+    image: confluentinc/cp-kafka:7.3.2@sha256:724faab73e5a5d18a83f1f015a52dde0dfac32851dec62c5f0006d6125d45b99
+    profiles: [core, full]
+    mem_limit: 512m
+    depends_on:
+      kafka: {condition: service_healthy}
+    entrypoint: [/bin/bash, -ec]
+    command:
+      - |
+        for topic in ticket_online ticket_counter; do
+          kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic $$topic --partitions 3 --replication-factor 1
+        done
+  cassandra:
+    image: cassandra:5.0.9@sha256:3ea9333712c5692f3fe91d6c4dcc262df9e36338c4fdd1bc00a5e53f1137a1a0
+    profiles: [core, full]
+    mem_limit: 1536m
+    environment:
+      MAX_HEAP_SIZE: 768M
+      HEAP_NEWSIZE: 192M
+    volumes: [cassandra-data:/var/lib/cassandra]
+    healthcheck:
+      test: [CMD-SHELL, "cqlsh -e 'DESCRIBE KEYSPACES' >/dev/null 2>&1"]
+      interval: 20s
+      timeout: 15s
+      retries: 30
+      start_period: 60s
+  cassandra-init:
+    image: cassandra:5.0.9@sha256:3ea9333712c5692f3fe91d6c4dcc262df9e36338c4fdd1bc00a5e53f1137a1a0
+    profiles: [core, full]
+    mem_limit: 256m
+    depends_on:
+      cassandra: {condition: service_healthy}
+    volumes: [./cassandra/init.cql:/init.cql:ro]
+    entrypoint: [/bin/bash, -ec]
+    command: ['cqlsh cassandra -f /init.cql']
+  data-init:
+    image: cinema-runtime:1.0.0
+    build: .
+    profiles: [full]
+    mem_limit: 512m
+    env_file: .env
+    volumes: [./data:/data]
+    command: [bash, -ec, 'python3 -m generator.make_reference; if [ ! -f /data/fault_manifest.json ]; then python3 -m generator.make_dataset; fi']
+  generator-api:
+    image: cinema-runtime:1.0.0
+    build: .
+    profiles: [full]
+    mem_limit: 384m
+    volumes: [./:/app:ro, ./data:/data:ro]
+    ports: ['127.0.0.1:18001:8000']
+    depends_on:
+      data-init: {condition: service_completed_successfully}
+    command: [python3, -m, generator.api]
+    healthcheck:
+      test: [CMD, python3, -c, 'import requests; requests.get("http://localhost:8000/health", timeout=3).raise_for_status()']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+  counter-api:
+    image: cinema-runtime:1.0.0
+    profiles: [full]
+    mem_limit: 384m
+    volumes: [./:/app:ro, ./data:/data:ro]
+    ports: ['127.0.0.1:18002:8000']
+    depends_on:
+      data-init: {condition: service_completed_successfully}
+    command: [python3, -m, generator.counter_api]
+    healthcheck:
+      test: [CMD, python3, -c, 'import requests; requests.get("http://localhost:8000/health", timeout=3).raise_for_status()']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+  producer-online:
+    image: cinema-runtime:1.0.0
+    profiles: [full]
+    mem_limit: 256m
+    env_file: .env
+    depends_on:
+      generator-api: {condition: service_healthy}
+      kafka-init: {condition: service_completed_successfully}
+    command: [python3, -m, producers.producer_online]
+  producer-counter:
+    image: cinema-runtime:1.0.0
+    profiles: [full]
+    mem_limit: 256m
+    env_file: .env
+    volumes: [./:/app:ro, ./data:/data]
+    depends_on:
+      counter-api: {condition: service_healthy}
+      kafka-init: {condition: service_completed_successfully}
+    command: [python3, -m, producers.producer_counter]
+  spark-streaming:
+    image: cinema-runtime:1.0.0
+    profiles: [core, full]
+    mem_limit: 2304m
+    ports: ['127.0.0.1:4040:4040']
+    env_file: .env
+    volumes: [./:/app:ro, ./data:/data, checkpoints:/checkpoints, ivy:/ivy]
+    depends_on:
+      kafka-init: {condition: service_completed_successfully}
+      cassandra-init: {condition: service_completed_successfully}
+    command: [bash, /app/scripts/start_spark.sh]
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS http://localhost:4040/api/v1/applications >/dev/null"]
+      interval: 20s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    profiles: [full]
+    mem_limit: 512m
+    ports: ['127.0.0.1:8888:8080']
+    environment:
+      KAFKA_CLUSTERS_0_NAME: cinema
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_READONLY: 'true'
+      JAVA_OPTS: -Xmx256m
+  postgres:
+    image: postgres:16.4
+    profiles: [full]
+    mem_limit: 384m
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: airflow
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d airflow']
+      interval: 10s
+      retries: 10
+  airflow-init:
+    &airflow-common
+    image: cinema-airflow:2.9.3
+    build: {context: ., dockerfile: airflow/Dockerfile}
+    profiles: [full]
+    mem_limit: 1g
+    env_file: .env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__PARALLELISM: '2'
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD}@postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+      AIRFLOW__WEBSERVER__WORKERS: '1'
+      PYTHONPATH: /app
+    volumes: [./:/app:ro, ./airflow/dags:/opt/airflow/dags:ro, ./data:/data, airflow-logs:/opt/airflow/logs]
+    depends_on:
+      postgres: {condition: service_healthy}
+    command: [bash, -ec, 'airflow db migrate; python /app/airflow/init_user.py']
+  airflow-webserver:
+    <<: *airflow-common
+    ports: ['127.0.0.1:18080:8080']
+    depends_on:
+      airflow-init: {condition: service_completed_successfully}
+    command: webserver
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/health >/dev/null']
+      interval: 20s
+      retries: 20
+      start_period: 60s
+  airflow-scheduler:
+    <<: *airflow-common
+    depends_on:
+      airflow-init: {condition: service_completed_successfully}
+    command: scheduler
+volumes:
+  postgres-data:
+  airflow-logs:
+  checkpoints:
+  ivy:
+  kafka-data:
+  cassandra-data:
+

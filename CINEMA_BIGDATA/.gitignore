@@ -1,0 +1,12 @@
+.env
+__pycache__/
+.pytest_cache/
+*.pyc
+data/reference/*.csv
+data/counter_drop/
+data/runs/
+data/*.json
+data/*.jsonl
+data/*.db*
+data/metrics/
+!data/.gitkeep
