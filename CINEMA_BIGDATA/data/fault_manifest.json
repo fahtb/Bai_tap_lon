@@ -1,0 +1,18 @@
+{
+  "run_id": "demo",
+  "seed": 42,
+  "base_time": "2026-10-25T07:00:00+00:00",
+  "base_events": 1000,
+  "total_records": 1060,
+  "online": 524,
+  "counter": 536,
+  "injected": {
+    "BAD_TIME": 10,
+    "LATE": 20,
+    "MISSING": 20,
+    "BAD_PRICE": 10,
+    "DOUBLE_BOOKING": 5,
+    "FUTURE": 5,
+    "DUPLICATE": 30
+  }
+}

@@ -10,3 +10,23 @@ data/*.jsonl
 data/*.db*
 data/metrics/
 !data/.gitkeep
+
+# Bo du lieu demo nop bai
+!data/reference/*.csv
+!data/runs/
+data/runs/*
+!data/runs/demo/
+!data/runs/demo/**
+!data/fault_manifest.json
+
+# Minh chung kiem thu
+!data/video_demo_check.json
+!data/recovery_before.json
+!data/recovery_check.json
+!data/before_kafka_restore_check.json
+!data/after_kafka_presentation_check.json
+
+# So do Spark da luu
+!data/metrics/
+data/metrics/*
+!data/metrics/progress.jsonl

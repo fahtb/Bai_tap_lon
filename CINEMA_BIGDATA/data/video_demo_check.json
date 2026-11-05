@@ -1,0 +1,50 @@
+{
+  "checked_at": "2026-11-05T03:55:03.788914+00:00",
+  "counts": {
+    "event_receipts": 1060,
+    "ticket_events": 980,
+    "invalid_events": 50,
+    "seat_bookings": 950,
+    "revenue_by_movie_hour": 110,
+    "revenue_by_channel_hour": 4,
+    "occupancy_by_showtime": 897
+  },
+  "hashes": {
+    "event_receipts": "87573573a0590d025d219d9c82632621cd96d71d775acaea4cd439a7b07d78fc",
+    "ticket_events": "b0a70b8abb6223649376d02c4a3aa2c4131d5a1e0a0f6b8d8f5054abaa55b3ed",
+    "invalid_events": "754b7ce01f4ff0d34a4da834af8cb8a305b0f4849ebcbfc3d109acc3e88ef5c1",
+    "seat_bookings": "c7a1d8f4a6dd798fbeebf106219eb0e60ec61aea1bdd098ef8f63e6bba20b040",
+    "revenue_by_movie_hour": "06d007589b63e6b4f4a0a0cd8d1fdf867937ff690c5fd2cbe72fc1da07ddbadb",
+    "revenue_by_channel_hour": "21cb0e71fbbf2d5cec26f2f0777fc0da6889dfed2d8a627f1b20bd31ac1dfd54",
+    "occupancy_by_showtime": "9eabe1bdbda0fcd85c64fbb2f2983f9978cb69edb824d554f9c06265ebca7fe9"
+  },
+  "expected_revenue_vnd": 91050000,
+  "expected_sold_tickets": 940,
+  "actual_revenue_vnd": 91050000,
+  "invalid_reasons": {
+    "BAD_PRICE": 10,
+    "MISSING_FIELD": 20,
+    "BAD_TIME": 10,
+    "DOUBLE_BOOKING": 5,
+    "FUTURE": 5
+  },
+  "checkpoint_commits": {
+    "audit": [
+      0
+    ],
+    "valid": [
+      0,
+      1
+    ]
+  },
+  "checks": {
+    "all_original_receipts": true,
+    "duplicate_receipts_match_manifest": true,
+    "exact_accepted_event_ids": true,
+    "exact_invalid_ids_and_reasons": true,
+    "unique_ledger_ids": true,
+    "exact_revenue_by_movie_hour": true,
+    "exact_revenue_by_channel_hour": true,
+    "exact_occupancy": true
+  }
+}
